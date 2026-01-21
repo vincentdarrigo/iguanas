@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Iguana Catch: Miami Edition</title>
+    <title>Iguana Catch: Miami Realism</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Bangers&display=swap');
 
         body { 
             margin: 0; 
             overflow: hidden; 
-            background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%);
+            background: #000;
             font-family: 'Bangers', cursive;
             touch-action: none; 
         }
@@ -47,7 +47,7 @@
         }
         button:active { transform: translateY(5px); box-shadow: 0 0 0 #8B0000; }
 
-        canvas { image-rendering: pixelated; display: block; }
+        canvas { display: block; }
         .hidden { display: none !important; }
     </style>
 </head>
@@ -76,6 +76,24 @@
         const ctx = canvas.getContext('2d');
         const uiLayer = document.getElementById('ui-layer');
 
+        // --- ASSET LOADER ---
+        const assets = {
+            bg: new Image(),
+            idle: new Image(),
+            walk1: new Image(),
+            walk2: new Image(),
+            walk3: new Image(),
+            iguana: new Image()
+        };
+
+        // LOAD FILES
+        assets.bg.src = 'miami.png'; 
+        assets.idle.src = 'idle.png';
+        assets.walk1.src = 'walk1.png';
+        assets.walk2.src = 'walk2.png';
+        assets.walk3.src = 'walk3.png';
+        assets.iguana.src = 'iguana.png';
+
         // --- AUDIO ---
         const audio = {
             music: new Audio('music.wav'),
@@ -85,11 +103,7 @@
         audio.music.loop = true;
         audio.music.volume = 0.4;
 
-        // --- ASSETS ---
-        const sprites = new Image();
-        sprites.src = 'spritesheet.png'; 
-
-        // --- GAME STATE ---
+        // --- GAME VARIABLES ---
         let gameRunning = false;
         let score = 0;
         let strikes = 0;
@@ -97,35 +111,47 @@
         let baseSpeed = 5;
         let frameCount = 0;
         let canvasW, canvasH;
+        let scaleFactor = 1; // To adapt the background to screen size
         let musicEnabled = true;
 
-        // --- SCISSORS CONFIG (THE FIX) ---
-        // We trim a huge chunk off the top (90px) to ensure no ghost feet appear
-        let cellW, cellH;
-        const TRIM_TOP = 0;   
-        const TRIM_BTM = 0;   
-        const TRIM_SIDE = 0;  
+        // --- SPAWN POINTS ---
+        // These are percentages (0.0 to 1.0) of the width/height of your image
+        // where the tree leaves are. 
+        // Based on 'miami.png':
+        const TREE_LOCATIONS = [
+            { x: 0.10, y: 0.25 }, // Leftmost tree
+            { x: 0.30, y: 0.40 }, // Leaning tree
+            { x: 0.50, y: 0.10 }, // Center tall tree
+            { x: 0.75, y: 0.35 }, // Right cluster
+            { x: 0.90, y: 0.20 }  // Far right
+        ];
 
-        sprites.onload = () => {
-            cellW = sprites.naturalWidth / 2;
-            cellH = sprites.naturalHeight / 3;
-            resize();
-        };
-
+        // --- RESIZE LOGIC ---
         function resize() {
             canvasW = window.innerWidth;
             canvasH = window.innerHeight;
             canvas.width = canvasW;
             canvas.height = canvasH;
-            ctx.imageSmoothingEnabled = false;
-            if(gameRunning) initTrees();
-            else draw();
+            
+            // Calculate scale to make background cover the screen nicely
+            // We want to fill height, and let width crop if needed, or vice versa
+            if (assets.bg.complete) {
+                // Determine scale based on keeping the bottom (ground) visible
+                scaleFactor = canvasH / assets.bg.naturalHeight;
+            }
+            
+            ctx.imageSmoothingEnabled = false; 
+            
+            if(!gameRunning) draw();
         }
         window.addEventListener('resize', resize);
+        assets.bg.onload = resize;
 
         // --- OBJECTS ---
-        let trees = [];
+        let spawners = []; // Replacing 'trees' with invisible spawners
         let iguanas = [];
+        let particles = []; // Leaves falling effect
+        
         let player = {
             x: 0, y: 0, w: 120, h: 160, 
             speed: 12, facingRight: true, 
@@ -137,22 +163,16 @@
         window.addEventListener('keyup', e => keys[e.code] = false);
 
         // --- LOGIC ---
-        function initTrees() {
-            trees = [];
-            const count = 5;
-            const spacing = canvasW / (count + 1);
-            for(let i=1; i<=count; i++) {
-                trees.push({
-                    x: spacing * i,
-                    y: canvasH - 75, 
-                    // FIXED: Reduced max height so they fit on screen
-                    height: 250 + Math.random() * 100, 
-                    shakeTimer: 0
-                });
-            }
+        function initGame() {
+            spawners = TREE_LOCATIONS.map(loc => ({
+                xPct: loc.x,
+                yPct: loc.y,
+                shakeTimer: 0
+            }));
+            
             player.x = canvasW / 2;
-            // FIXED: Lifted player slightly to stand ON sand
-            player.y = canvasH - 220; 
+            // Player stands near bottom of screen (adjust -100 if feet are too low)
+            player.y = canvasH - 150; 
         }
 
         function startGame() {
@@ -167,7 +187,8 @@
             score = 0;
             strikes = 0;
             iguanas = [];
-            initTrees();
+            particles = [];
+            initGame();
             
             gameRunning = true;
             uiLayer.classList.add('hidden');
@@ -185,10 +206,24 @@
             uiLayer.classList.remove('hidden');
         }
 
+        function spawnParticles(x, y) {
+            // Create 5 little green bits to simulate rustling leaves
+            for(let i=0; i<5; i++) {
+                particles.push({
+                    x: x + (Math.random() * 40 - 20),
+                    y: y + (Math.random() * 40 - 20),
+                    vx: (Math.random() * 2 - 1),
+                    vy: (Math.random() * 2),
+                    life: 20,
+                    color: Math.random() > 0.5 ? '#228B22' : '#32CD32'
+                });
+            }
+        }
+
         function update() {
             frameCount++;
 
-            // Player
+            // Player Movement
             player.state = 'idle';
             if (keys['ArrowLeft'] || keys['KeyA']) {
                 player.x -= player.speed;
@@ -200,143 +235,143 @@
                 player.facingRight = true;
                 player.state = 'walk';
             }
+            // Boundaries
             if (player.x < 0) player.x = 0;
             if (player.x > canvasW - player.w) player.x = canvasW - player.w;
             
-            if (player.state === 'walk' && frameCount % 6 === 0) player.animFrame++;
+            if (player.state === 'walk' && frameCount % 8 === 0) {
+                player.animFrame++;
+            }
 
-            // Trees
-            trees.forEach(tree => {
-                if (tree.shakeTimer > 0) {
-                    tree.shakeTimer--;
-                    if (tree.shakeTimer === 0) {
+            // Spawner Logic
+            // The background image dimensions scaled to screen
+            const bgW = assets.bg.naturalWidth * scaleFactor;
+            // Center the image if it's wider than screen, or align left?
+            // Let's assume align left for simplicity of coordinates
+            
+            spawners.forEach(spawn => {
+                // Calculate Real Screen X/Y based on percentage
+                // If background is being cropped or centered, we need to map this carefully.
+                // For now, we map percentage to CANVAS width/height which is safest for gameplay.
+                const screenX = spawn.xPct * canvasW;
+                const screenY = spawn.yPct * canvasH;
+
+                if (spawn.shakeTimer > 0) {
+                    spawn.shakeTimer--;
+                    
+                    // Add particle effect while shaking
+                    if (frameCount % 5 === 0) spawnParticles(screenX, screenY);
+
+                    if (spawn.shakeTimer === 0) {
+                        // Drop Iguana
                         iguanas.push({
-                            x: tree.x + (Math.random()*40 - 20),
-                            // FIXED: Spawns just under the leaves
-                            y: tree.y - tree.height + 10, 
+                            x: screenX,
+                            y: screenY,
                             w: 60, h: 90, 
-                            vy: 0, active: true, flashTimer: 0
+                            vy: 0, active: true
                         });
                     }
                 } else if (Math.random() < 0.005) {
-                    tree.shakeTimer = 80;
+                    spawn.shakeTimer = 80; // Start shaking
                 }
             });
 
-            // Iguanas
+            // Particles Update
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+                if(p.life <= 0) particles.splice(i, 1);
+            }
+
+            // Iguana Logic
             iguanas.forEach(iguana => {
                 if (!iguana.active) return;
                 iguana.vy += 0.2; 
                 if(iguana.vy > baseSpeed) iguana.vy = baseSpeed;
                 iguana.y += iguana.vy;
-                iguana.flashTimer++;
 
-                // Catch
+                // Collision
                 if (
-                    iguana.x < player.x + player.w - 40 &&
-                    iguana.x + iguana.w > player.x + 40 &&
-                    iguana.y + iguana.h > player.y + 30 && 
+                    iguana.x < player.x + player.w - 30 &&
+                    iguana.x + iguana.w > player.x + 30 &&
+                    iguana.y + iguana.h > player.y + 40 && // Top of basket
                     iguana.y < player.y + 100
                 ) {
                     score++;
                     iguana.active = false;
-                    if(musicEnabled) {
-                        audio.cheer.currentTime = 0;
-                        audio.cheer.play();
-                    }
+                    if(musicEnabled) { audio.cheer.currentTime = 0; audio.cheer.play(); }
                 }
                 else if (iguana.y > canvasH) {
                     iguana.active = false;
                     strikes++;
-                    if(musicEnabled) {
-                        audio.splat.currentTime = 0;
-                        audio.splat.play();
-                    }
+                    if(musicEnabled) { audio.splat.currentTime = 0; audio.splat.play(); }
                     if (strikes >= maxStrikes) gameOver();
                 }
             });
         }
 
-        function drawPalmTree(ctx, x, y, height, shake) {
-            ctx.save();
-            ctx.translate(x + shake, y);
-            
-            // Trunk
-            ctx.beginPath();
-            ctx.moveTo(-15, 0); 
-            ctx.quadraticCurveTo(10, -height / 2, -5, -height); 
-            ctx.lineTo(5, -height); 
-            ctx.quadraticCurveTo(20, -height / 2, 15, 0);
-            ctx.fillStyle = '#8B4513'; ctx.fill();
-            
-            // Leaves
-            ctx.translate(0, -height);
-            ctx.fillStyle = '#228B22';
-            for(let i=0; i<5; i++) {
-                ctx.save();
-                ctx.rotate((i * 45 - 90) * Math.PI / 180);
-                ctx.beginPath(); ctx.ellipse(0, -40, 15, 50, 0, 0, Math.PI * 2); ctx.fill();
-                ctx.restore();
-            }
-            ctx.restore();
-        }
-
         function draw() {
-            ctx.clearRect(0, 0, canvasW, canvasH);
-            
-            // Sand
-            ctx.fillStyle = '#F4A460'; ctx.fillRect(0, canvasH - 80, canvasW, 80);
-            ctx.fillStyle = '#32CD32'; ctx.fillRect(0, canvasH - 90, canvasW, 10);
+            // 1. Draw Background (Cover Mode)
+            if (assets.bg.complete) {
+                // This draws the image to fill the height, and centers it horizontally
+                const drawW = assets.bg.naturalWidth * scaleFactor;
+                const drawH = assets.bg.naturalHeight * scaleFactor;
+                const offsetX = (canvasW - drawW) / 2; // Center it
+                
+                ctx.drawImage(assets.bg, offsetX, 0, drawW, drawH);
+            } else {
+                ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvasW, canvasH);
+            }
 
-            // Trees
-            trees.forEach(tree => {
-                let shake = tree.shakeTimer > 0 ? Math.sin(frameCount * 0.5) * 5 : 0;
-                if(tree.shakeTimer > 0 && frameCount % 10 < 5) {
-                    ctx.fillStyle = 'red'; ctx.font = 'bold 40px Arial';
-                    ctx.fillText('!', tree.x - 10, tree.y - tree.height - 50);
+            // 2. Draw Warning Signs ("!")
+            spawners.forEach(spawn => {
+                if(spawn.shakeTimer > 0 && frameCount % 10 < 5) {
+                    ctx.fillStyle = 'red'; 
+                    ctx.font = 'bold 50px Arial';
+                    ctx.fillText('!', (spawn.xPct * canvasW) - 10, (spawn.yPct * canvasH) - 50);
                 }
-                drawPalmTree(ctx, tree.x, tree.y, tree.height, shake);
             });
 
-            // Iguanas
+            // 3. Draw Particles (Leaves)
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 5, 5);
+            });
+
+            // 4. Iguanas
             iguanas.forEach(iguana => {
                 if (!iguana.active) return;
-                let col = (Math.floor(iguana.flashTimer / 5) % 2); 
-                
-                // FIXED: Use Aggressive Trims
-                ctx.drawImage(sprites, 
-                    (col * cellW) + TRIM_SIDE, (2 * cellH) + TRIM_TOP, 
-                    cellW - (TRIM_SIDE*2), cellH - (TRIM_TOP + TRIM_BTM),      
-                    iguana.x, iguana.y, iguana.w, iguana.h      
-                );
+                ctx.drawImage(assets.iguana, iguana.x, iguana.y, iguana.w, iguana.h);
             });
 
-            // Player
+            // 5. Player
             ctx.save();
-            let row = 0, col = 0;
-            if (player.state !== 'idle') {
-                const cycle = [{r:0, c:1}, {r:1, c:0}, {r:1, c:1}];
-                let frame = cycle[player.animFrame % 3];
-                row = frame.r; col = frame.c;
+            let currentImg = assets.idle;
+            if (player.state === 'walk') {
+                const cycle = [assets.walk1, assets.walk2, assets.walk3, assets.walk2];
+                currentImg = cycle[player.animFrame % 4];
             }
-            
+
             if (!player.facingRight) {
                 ctx.translate(player.x + player.w/2, player.y + player.h/2);
                 ctx.scale(-1, 1);
                 ctx.translate(-(player.x + player.w/2), -(player.y + player.h/2));
             }
-            
-            // FIXED: Use same trims for Player
-            ctx.drawImage(sprites, 
-                (col * cellW) + TRIM_SIDE, (row * cellH) + TRIM_TOP, 
-                cellW - (TRIM_SIDE*2), cellH - (TRIM_TOP + TRIM_BTM), 
-                player.x, player.y, player.w, player.h
-            );
+            ctx.drawImage(currentImg, player.x, player.y, player.w, player.h);
             ctx.restore();
 
-            // HUD
-            ctx.fillStyle = 'white'; ctx.font = '30px Bangers'; ctx.shadowColor = 'black'; ctx.shadowBlur = 4;
+            // 6. HUD
+            ctx.fillStyle = 'white'; 
+            ctx.font = '30px Bangers'; 
+            ctx.shadowColor = 'black'; 
+            ctx.shadowBlur = 4;
+            ctx.lineWidth = 3;
+            ctx.strokeText(`FROZEN IGUANAS: ${score}`, 20, 40);
             ctx.fillText(`FROZEN IGUANAS: ${score}`, 20, 40);
+            
+            ctx.strokeText(`STRIKES: ${strikes}/${maxStrikes}`, 20, 80);
             ctx.fillText(`STRIKES: ${strikes}/${maxStrikes}`, 20, 80);
             ctx.shadowBlur = 0;
         }
@@ -347,6 +382,10 @@
             draw();
             requestAnimationFrame(gameLoop);
         }
+        
+        // Init
+        resize();
+
     </script>
 </body>
 </html>
