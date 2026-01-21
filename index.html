@@ -47,6 +47,8 @@
             cursor: pointer;
             box-shadow: 0 5px 0 #8B0000;
             margin-top: 20px;
+            /* Fix for some mobile browsers to ensure button is clickable */
+            touch-action: manipulation; 
         }
         button:active { transform: translateY(5px); box-shadow: 0 0 0 #8B0000; }
 
@@ -151,12 +153,14 @@
         window.addEventListener('keydown', e => keys[e.code] = true);
         window.addEventListener('keyup', e => keys[e.code] = false);
 
-        // --- MOBILE TOUCH CONTROLS ---
+        // --- MOBILE TOUCH CONTROLS (FIXED) ---
         function handleTouch(e) {
+            // FIX: If game isn't running, let the tap click the button!
+            if (!gameRunning) return;
+
             e.preventDefault(); 
             let touchX = e.touches[0].clientX;
             
-            // If touching left of player, move left. Right, move right.
             if (touchX < player.x) {
                 keys['ArrowLeft'] = true;
                 keys['ArrowRight'] = false;
@@ -166,8 +170,10 @@
             }
         }
 
+        // Attach listener with passive: false to allow preventing default
         window.addEventListener('touchstart', handleTouch, {passive: false});
         window.addEventListener('touchmove', handleTouch, {passive: false});
+        
         window.addEventListener('touchend', () => {
             keys['ArrowLeft'] = false;
             keys['ArrowRight'] = false;
@@ -186,7 +192,7 @@
         }
 
         function startGame() {
-            // FIXED: Reduced base difficulty slightly (+2 instead of +3)
+            // Difficulty is speedInput value + 2
             baseSpeed = parseInt(document.getElementById('speedInput').value) + 2;
             musicEnabled = document.getElementById('musicToggle').checked;
             
