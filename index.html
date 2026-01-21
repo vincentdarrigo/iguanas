@@ -61,8 +61,8 @@
         <h2>MIAMI FREEZE ALERT</h2>
         
         <div class="control-group">
-            <label style="font-size: 24px; color: white;">Drop Speed: <span id="speedVal">5</span></label><br>
-            <input type="range" id="speedInput" min="1" max="10" value="5" oninput="document.getElementById('speedVal').innerText = this.value">
+            <label style="font-size: 24px; color: white;">Drop Speed: <span id="speedVal">1</span></label><br>
+            <input type="range" id="speedInput" min="1" max="10" value="1" oninput="document.getElementById('speedVal').innerText = this.value">
         </div>
         <div class="control-group">
             <label style="font-size: 24px; color: white;">Music: </label>
@@ -115,14 +115,13 @@
         let canvasW, canvasH;
         let musicEnabled = true;
 
-        // --- SPAWN POINTS (Percentages of Screen Width/Height) ---
-        // Based on the miami.png tree locations
+        // --- SPAWN POINTS ---
         const TREE_LOCATIONS = [
-            { x: 0.05, y: 0.35 }, // Far Left Tree
-            { x: 0.23, y: 0.45 }, // 2nd Tree
-            { x: 0.43, y: 0.25 }, // Center Tall Tree
-            { x: 0.65, y: 0.40 }, // 4th Tree
-            { x: 0.85, y: 0.35 }  // Far Right Tree
+            { x: 0.05, y: 0.35 }, 
+            { x: 0.23, y: 0.45 }, 
+            { x: 0.43, y: 0.25 }, 
+            { x: 0.65, y: 0.40 }, 
+            { x: 0.85, y: 0.35 }  
         ];
 
         // --- RESIZE LOGIC ---
@@ -152,19 +151,23 @@
         window.addEventListener('keydown', e => keys[e.code] = true);
         window.addEventListener('keyup', e => keys[e.code] = false);
 
-        // Mobile Touch Controls
-        let touchStartX = 0;
-        window.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
-        window.addEventListener('touchmove', e => {
-            e.preventDefault(); // Stop scrolling
+        // --- MOBILE TOUCH CONTROLS ---
+        function handleTouch(e) {
+            e.preventDefault(); 
             let touchX = e.touches[0].clientX;
-            // Simple follow logic
-            if (touchX < player.x) keys['ArrowLeft'] = true;
-            else keys['ArrowLeft'] = false;
             
-            if (touchX > player.x + player.w) keys['ArrowRight'] = true;
-            else keys['ArrowRight'] = false;
-        }, {passive: false});
+            // If touching left of player, move left. Right, move right.
+            if (touchX < player.x) {
+                keys['ArrowLeft'] = true;
+                keys['ArrowRight'] = false;
+            } else if (touchX > player.x + player.w) {
+                keys['ArrowRight'] = true;
+                keys['ArrowLeft'] = false;
+            }
+        }
+
+        window.addEventListener('touchstart', handleTouch, {passive: false});
+        window.addEventListener('touchmove', handleTouch, {passive: false});
         window.addEventListener('touchend', () => {
             keys['ArrowLeft'] = false;
             keys['ArrowRight'] = false;
@@ -179,12 +182,12 @@
             }));
             
             player.x = canvasW / 2 - 60;
-            // Place player near bottom (adjust 120 based on how much sand is in photo)
             player.y = canvasH - 120; 
         }
 
         function startGame() {
-            baseSpeed = parseInt(document.getElementById('speedInput').value) + 3;
+            // FIXED: Reduced base difficulty slightly (+2 instead of +3)
+            baseSpeed = parseInt(document.getElementById('speedInput').value) + 2;
             musicEnabled = document.getElementById('musicToggle').checked;
             
             if(musicEnabled) {
@@ -252,7 +255,6 @@
 
             // Spawner Logic
             spawners.forEach(spawn => {
-                // Map percentage to ACTUAL screen size (Stretched)
                 const screenX = spawn.xPct * canvasW;
                 const screenY = spawn.yPct * canvasH;
 
@@ -262,7 +264,7 @@
 
                     if (spawn.shakeTimer === 0) {
                         iguanas.push({
-                            x: screenX - 30, // Center iguana on spawn point
+                            x: screenX - 30, 
                             y: screenY,
                             w: 60, h: 90, 
                             vy: 0, active: true
@@ -310,10 +312,10 @@
         }
 
         function draw() {
-            // 1. CLEAR SCREEN (Fixes Ghosting)
+            // 1. CLEAR SCREEN
             ctx.clearRect(0, 0, canvasW, canvasH);
 
-            // 2. DRAW BACKGROUND (Stretched to fill)
+            // 2. DRAW BACKGROUND
             if (assets.bg.complete) {
                 ctx.drawImage(assets.bg, 0, 0, canvasW, canvasH);
             } else {
@@ -325,7 +327,6 @@
                 if(spawn.shakeTimer > 0 && frameCount % 10 < 5) {
                     ctx.fillStyle = 'red'; 
                     ctx.font = 'bold 50px Arial';
-                    // Draw '!' relative to stretched spawn point
                     ctx.fillText('!', (spawn.xPct * canvasW) - 10, (spawn.yPct * canvasH) - 50);
                 }
             });
