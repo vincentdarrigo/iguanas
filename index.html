@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Iguana Catch: Miami Realism</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Bangers&display=swap');
@@ -11,27 +12,28 @@
             overflow: hidden; 
             background: #000;
             font-family: 'Bangers', cursive;
-            touch-action: none; 
+            touch-action: none; /* Critical for mobile */
         }
         
         #ui-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            background: rgba(0, 0, 0, 0.6);
+            background: rgba(0, 0, 0, 0.7);
             color: #FFD700; 
             text-shadow: 3px 3px 0px #000;
             z-index: 10;
         }
 
-        h1 { font-size: 80px; margin: 0; letter-spacing: 2px; }
-        h2 { font-size: 40px; color: white; margin-top: 5px; }
+        h1 { font-size: 80px; margin: 0; letter-spacing: 2px; text-align: center; line-height: 1; }
+        h2 { font-size: 40px; color: white; margin-top: 10px; text-align: center; }
         
         .control-group { 
-            margin: 20px; 
+            margin: 15px; 
             background: rgba(255,255,255,0.2); 
             padding: 15px; 
             border-radius: 15px; 
             border: 2px solid white;
+            text-align: center;
         }
         
         button {
@@ -44,6 +46,7 @@
             border-radius: 50px;
             cursor: pointer;
             box-shadow: 0 5px 0 #8B0000;
+            margin-top: 20px;
         }
         button:active { transform: translateY(5px); box-shadow: 0 0 0 #8B0000; }
 
@@ -86,7 +89,6 @@
             iguana: new Image()
         };
 
-        // LOAD FILES
         assets.bg.src = 'miami.png'; 
         assets.idle.src = 'idle.png';
         assets.walk1.src = 'walk1.png';
@@ -111,19 +113,16 @@
         let baseSpeed = 5;
         let frameCount = 0;
         let canvasW, canvasH;
-        let scaleFactor = 1; // To adapt the background to screen size
         let musicEnabled = true;
 
-        // --- SPAWN POINTS ---
-        // These are percentages (0.0 to 1.0) of the width/height of your image
-        // where the tree leaves are. 
-        // Based on 'miami.png':
+        // --- SPAWN POINTS (Percentages of Screen Width/Height) ---
+        // Based on the miami.png tree locations
         const TREE_LOCATIONS = [
-            { x: 0.10, y: 0.25 }, // Leftmost tree
-            { x: 0.30, y: 0.40 }, // Leaning tree
-            { x: 0.50, y: 0.10 }, // Center tall tree
-            { x: 0.75, y: 0.35 }, // Right cluster
-            { x: 0.90, y: 0.20 }  // Far right
+            { x: 0.05, y: 0.35 }, // Far Left Tree
+            { x: 0.23, y: 0.45 }, // 2nd Tree
+            { x: 0.43, y: 0.25 }, // Center Tall Tree
+            { x: 0.65, y: 0.40 }, // 4th Tree
+            { x: 0.85, y: 0.35 }  // Far Right Tree
         ];
 
         // --- RESIZE LOGIC ---
@@ -132,25 +131,16 @@
             canvasH = window.innerHeight;
             canvas.width = canvasW;
             canvas.height = canvasH;
-            
-            // Calculate scale to make background cover the screen nicely
-            // We want to fill height, and let width crop if needed, or vice versa
-            if (assets.bg.complete) {
-                // Determine scale based on keeping the bottom (ground) visible
-                scaleFactor = canvasH / assets.bg.naturalHeight;
-            }
-            
             ctx.imageSmoothingEnabled = false; 
-            
-            if(!gameRunning) draw();
+            if(!gameRunning && assets.bg.complete) draw();
         }
         window.addEventListener('resize', resize);
         assets.bg.onload = resize;
 
         // --- OBJECTS ---
-        let spawners = []; // Replacing 'trees' with invisible spawners
+        let spawners = []; 
         let iguanas = [];
-        let particles = []; // Leaves falling effect
+        let particles = []; 
         
         let player = {
             x: 0, y: 0, w: 120, h: 160, 
@@ -162,6 +152,24 @@
         window.addEventListener('keydown', e => keys[e.code] = true);
         window.addEventListener('keyup', e => keys[e.code] = false);
 
+        // Mobile Touch Controls
+        let touchStartX = 0;
+        window.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+        window.addEventListener('touchmove', e => {
+            e.preventDefault(); // Stop scrolling
+            let touchX = e.touches[0].clientX;
+            // Simple follow logic
+            if (touchX < player.x) keys['ArrowLeft'] = true;
+            else keys['ArrowLeft'] = false;
+            
+            if (touchX > player.x + player.w) keys['ArrowRight'] = true;
+            else keys['ArrowRight'] = false;
+        }, {passive: false});
+        window.addEventListener('touchend', () => {
+            keys['ArrowLeft'] = false;
+            keys['ArrowRight'] = false;
+        });
+
         // --- LOGIC ---
         function initGame() {
             spawners = TREE_LOCATIONS.map(loc => ({
@@ -170,9 +178,9 @@
                 shakeTimer: 0
             }));
             
-            player.x = canvasW / 2;
-            // Player stands near bottom of screen (adjust -100 if feet are too low)
-            player.y = canvasH - 150; 
+            player.x = canvasW / 2 - 60;
+            // Place player near bottom (adjust 120 based on how much sand is in photo)
+            player.y = canvasH - 120; 
         }
 
         function startGame() {
@@ -207,7 +215,6 @@
         }
 
         function spawnParticles(x, y) {
-            // Create 5 little green bits to simulate rustling leaves
             for(let i=0; i<5; i++) {
                 particles.push({
                     x: x + (Math.random() * 40 - 20),
@@ -244,39 +251,29 @@
             }
 
             // Spawner Logic
-            // The background image dimensions scaled to screen
-            const bgW = assets.bg.naturalWidth * scaleFactor;
-            // Center the image if it's wider than screen, or align left?
-            // Let's assume align left for simplicity of coordinates
-            
             spawners.forEach(spawn => {
-                // Calculate Real Screen X/Y based on percentage
-                // If background is being cropped or centered, we need to map this carefully.
-                // For now, we map percentage to CANVAS width/height which is safest for gameplay.
+                // Map percentage to ACTUAL screen size (Stretched)
                 const screenX = spawn.xPct * canvasW;
                 const screenY = spawn.yPct * canvasH;
 
                 if (spawn.shakeTimer > 0) {
                     spawn.shakeTimer--;
-                    
-                    // Add particle effect while shaking
                     if (frameCount % 5 === 0) spawnParticles(screenX, screenY);
 
                     if (spawn.shakeTimer === 0) {
-                        // Drop Iguana
                         iguanas.push({
-                            x: screenX,
+                            x: screenX - 30, // Center iguana on spawn point
                             y: screenY,
                             w: 60, h: 90, 
                             vy: 0, active: true
                         });
                     }
                 } else if (Math.random() < 0.005) {
-                    spawn.shakeTimer = 80; // Start shaking
+                    spawn.shakeTimer = 80; 
                 }
             });
 
-            // Particles Update
+            // Particles
             for (let i = particles.length - 1; i >= 0; i--) {
                 let p = particles[i];
                 p.x += p.vx;
@@ -285,7 +282,7 @@
                 if(p.life <= 0) particles.splice(i, 1);
             }
 
-            // Iguana Logic
+            // Iguanas
             iguanas.forEach(iguana => {
                 if (!iguana.active) return;
                 iguana.vy += 0.2; 
@@ -296,7 +293,7 @@
                 if (
                     iguana.x < player.x + player.w - 30 &&
                     iguana.x + iguana.w > player.x + 30 &&
-                    iguana.y + iguana.h > player.y + 40 && // Top of basket
+                    iguana.y + iguana.h > player.y + 40 && 
                     iguana.y < player.y + 100
                 ) {
                     score++;
@@ -313,40 +310,39 @@
         }
 
         function draw() {
-            // 1. Draw Background (Cover Mode)
+            // 1. CLEAR SCREEN (Fixes Ghosting)
+            ctx.clearRect(0, 0, canvasW, canvasH);
+
+            // 2. DRAW BACKGROUND (Stretched to fill)
             if (assets.bg.complete) {
-                // This draws the image to fill the height, and centers it horizontally
-                const drawW = assets.bg.naturalWidth * scaleFactor;
-                const drawH = assets.bg.naturalHeight * scaleFactor;
-                const offsetX = (canvasW - drawW) / 2; // Center it
-                
-                ctx.drawImage(assets.bg, offsetX, 0, drawW, drawH);
+                ctx.drawImage(assets.bg, 0, 0, canvasW, canvasH);
             } else {
-                ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvasW, canvasH);
+                ctx.fillStyle = '#4facfe'; ctx.fillRect(0, 0, canvasW, canvasH);
             }
 
-            // 2. Draw Warning Signs ("!")
+            // 3. Warning Signs
             spawners.forEach(spawn => {
                 if(spawn.shakeTimer > 0 && frameCount % 10 < 5) {
                     ctx.fillStyle = 'red'; 
                     ctx.font = 'bold 50px Arial';
+                    // Draw '!' relative to stretched spawn point
                     ctx.fillText('!', (spawn.xPct * canvasW) - 10, (spawn.yPct * canvasH) - 50);
                 }
             });
 
-            // 3. Draw Particles (Leaves)
+            // 4. Particles
             particles.forEach(p => {
                 ctx.fillStyle = p.color;
                 ctx.fillRect(p.x, p.y, 5, 5);
             });
 
-            // 4. Iguanas
+            // 5. Iguanas
             iguanas.forEach(iguana => {
                 if (!iguana.active) return;
                 ctx.drawImage(assets.iguana, iguana.x, iguana.y, iguana.w, iguana.h);
             });
 
-            // 5. Player
+            // 6. Player
             ctx.save();
             let currentImg = assets.idle;
             if (player.state === 'walk') {
@@ -362,7 +358,7 @@
             ctx.drawImage(currentImg, player.x, player.y, player.w, player.h);
             ctx.restore();
 
-            // 6. HUD
+            // 7. HUD
             ctx.fillStyle = 'white'; 
             ctx.font = '30px Bangers'; 
             ctx.shadowColor = 'black'; 
@@ -383,7 +379,6 @@
             requestAnimationFrame(gameLoop);
         }
         
-        // Init
         resize();
 
     </script>
