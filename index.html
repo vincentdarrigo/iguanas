@@ -9,9 +9,9 @@
         body { 
             margin: 0; 
             overflow: hidden; 
-            background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%); /* Miami Sky */
+            background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%);
             font-family: 'Bangers', cursive;
-            touch-action: none; /* Prevents scrolling on mobile */
+            touch-action: none; 
         }
         
         #ui-layer {
@@ -76,14 +76,14 @@
         const ctx = canvas.getContext('2d');
         const uiLayer = document.getElementById('ui-layer');
 
-        // --- AUDIO SETUP ---
+        // --- AUDIO ---
         const audio = {
             music: new Audio('music.wav'),
             splat: new Audio('splat.wav'),
             cheer: new Audio('cheer.wav')
         };
         audio.music.loop = true;
-        audio.music.volume = 0.4; // Lower background music volume
+        audio.music.volume = 0.4;
 
         // --- ASSETS ---
         const sprites = new Image();
@@ -99,8 +99,12 @@
         let canvasW, canvasH;
         let musicEnabled = true;
 
-        // Auto-Detect Sprite Grid Size (2 Columns, 3 Rows)
+        // --- SPRITE SLICING CONFIG ---
+        // We use "PAD" to trim the edges so we don't catch the neighbor's pixels
         let cellW, cellH;
+        const PAD_X = 10; 
+        const PAD_Y = 10; 
+
         sprites.onload = () => {
             cellW = sprites.naturalWidth / 2;
             cellH = sprites.naturalHeight / 3;
@@ -114,7 +118,7 @@
             canvas.height = canvasH;
             ctx.imageSmoothingEnabled = false;
             if(gameRunning) initTrees();
-            else draw(); // Draw one frame if waiting
+            else draw();
         }
         window.addEventListener('resize', resize);
 
@@ -139,13 +143,13 @@
             for(let i=1; i<=count; i++) {
                 trees.push({
                     x: spacing * i,
-                    y: canvasH - 180, 
+                    y: canvasH - 75, // FIXED: Planted firmly on the sand
                     height: 300 + Math.random() * 100,
                     shakeTimer: 0
                 });
             }
             player.x = canvasW / 2;
-            player.y = canvasH - 190; // Feet on sand
+            player.y = canvasH - 180; 
         }
 
         function startGame() {
@@ -181,7 +185,7 @@
         function update() {
             frameCount++;
 
-            // Player Move
+            // Player
             player.state = 'idle';
             if (keys['ArrowLeft'] || keys['KeyA']) {
                 player.x -= player.speed;
@@ -196,7 +200,6 @@
             if (player.x < 0) player.x = 0;
             if (player.x > canvasW - player.w) player.x = canvasW - player.w;
             
-            // Anim Timer
             if (player.state === 'walk' && frameCount % 6 === 0) player.animFrame++;
 
             // Trees
@@ -206,8 +209,9 @@
                     if (tree.shakeTimer === 0) {
                         iguanas.push({
                             x: tree.x + (Math.random()*40 - 20),
-                            y: tree.y - tree.height + 40,
-                            w: 50, h: 80,
+                            // FIXED: Spawns lower (inside leaves), not in sky
+                            y: tree.y - tree.height + 20, 
+                            w: 60, h: 90, // Slightly adjusted ratio
                             vy: 0, active: true, flashTimer: 0
                         });
                     }
@@ -224,12 +228,12 @@
                 iguana.y += iguana.vy;
                 iguana.flashTimer++;
 
-                // Catch
+                // Catch (Adjusted hitbox for better feel)
                 if (
-                    iguana.x < player.x + player.w - 30 &&
-                    iguana.x + iguana.w > player.x + 30 &&
-                    iguana.y + iguana.h > player.y + 20 && 
-                    iguana.y < player.y + 60
+                    iguana.x < player.x + player.w - 40 &&
+                    iguana.x + iguana.w > player.x + 40 &&
+                    iguana.y + iguana.h > player.y + 30 && 
+                    iguana.y < player.y + 100
                 ) {
                     score++;
                     iguana.active = false;
@@ -238,7 +242,6 @@
                         audio.cheer.play();
                     }
                 }
-                // Miss
                 else if (iguana.y > canvasH) {
                     iguana.active = false;
                     strikes++;
@@ -254,13 +257,15 @@
         function drawPalmTree(ctx, x, y, height, shake) {
             ctx.save();
             ctx.translate(x + shake, y);
-            // Trunk
+            
+            // Trunk (Drawn upwards from 0,0)
             ctx.beginPath();
             ctx.moveTo(-15, 0); 
             ctx.quadraticCurveTo(10, -height / 2, -5, -height); 
             ctx.lineTo(5, -height); 
             ctx.quadraticCurveTo(20, -height / 2, 15, 0);
             ctx.fillStyle = '#8B4513'; ctx.fill();
+            
             // Leaves
             ctx.translate(0, -height);
             ctx.fillStyle = '#228B22';
@@ -287,15 +292,21 @@
                     ctx.fillStyle = 'red'; ctx.font = 'bold 40px Arial';
                     ctx.fillText('!', tree.x - 10, tree.y - tree.height - 50);
                 }
-                drawPalmTree(ctx, tree.x, tree.y - 80, tree.height, shake);
+                // FIXED: We pass tree.y directly now
+                drawPalmTree(ctx, tree.x, tree.y, tree.height, shake);
             });
 
             // Iguanas
             iguanas.forEach(iguana => {
                 if (!iguana.active) return;
                 let col = (Math.floor(iguana.flashTimer / 5) % 2); 
-                // Iguanas are on Row 2 (index 2) of your sheet
-                ctx.drawImage(sprites, col * cellW, 2 * cellH, cellW, cellH, iguana.x, iguana.y, iguana.w, iguana.h);
+                
+                // FIXED: Added PAD_X/Y to trim edges and prevent "feet bleed"
+                ctx.drawImage(sprites, 
+                    (col * cellW) + PAD_X, (2 * cellH) + PAD_Y, // Source X, Y (Trimmed)
+                    cellW - (PAD_X*2), cellH - (PAD_Y*2),       // Source W, H (Trimmed)
+                    iguana.x, iguana.y, iguana.w, iguana.h      // Dest
+                );
             });
 
             // Player
@@ -306,12 +317,20 @@
                 let frame = cycle[player.animFrame % 3];
                 row = frame.r; col = frame.c;
             }
+            
+            // Flip
             if (!player.facingRight) {
                 ctx.translate(player.x + player.w/2, player.y + player.h/2);
                 ctx.scale(-1, 1);
                 ctx.translate(-(player.x + player.w/2), -(player.y + player.h/2));
             }
-            ctx.drawImage(sprites, col * cellW, row * cellH, cellW, cellH, player.x, player.y, player.w, player.h);
+            
+            // FIXED: Added PAD_X/Y here too for the player
+            ctx.drawImage(sprites, 
+                (col * cellW) + PAD_X, (row * cellH) + PAD_Y, 
+                cellW - (PAD_X*2), cellH - (PAD_Y*2), 
+                player.x, player.y, player.w, player.h
+            );
             ctx.restore();
 
             // HUD
