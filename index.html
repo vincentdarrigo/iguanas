@@ -100,10 +100,11 @@
         let musicEnabled = true;
 
         // --- SPRITE SLICING CONFIG ---
-        // We use "PAD" to trim the edges so we don't catch the neighbor's pixels
+        // We use specific padding to cut out "ghost feet" from the row above
         let cellW, cellH;
-        const PAD_X = 10; 
-        const PAD_Y = 10; 
+        const PAD_TOP = 60;   // Aggressive crop from top (Removes overhead feet)
+        const PAD_BOTTOM = 5; // Gentle crop from bottom (Keeps your feet)
+        const PAD_SIDE = 20;  // Trims side empty space
 
         sprites.onload = () => {
             cellW = sprites.naturalWidth / 2;
@@ -143,13 +144,14 @@
             for(let i=1; i<=count; i++) {
                 trees.push({
                     x: spacing * i,
-                    y: canvasH - 75, // FIXED: Planted firmly on the sand
+                    y: canvasH - 75, 
                     height: 300 + Math.random() * 100,
                     shakeTimer: 0
                 });
             }
+            // FIXED: Lifted player up significantly so feet are ON sand
             player.x = canvasW / 2;
-            player.y = canvasH - 180; 
+            player.y = canvasH - 240; 
         }
 
         function startGame() {
@@ -209,9 +211,9 @@
                     if (tree.shakeTimer === 0) {
                         iguanas.push({
                             x: tree.x + (Math.random()*40 - 20),
-                            // FIXED: Spawns lower (inside leaves), not in sky
-                            y: tree.y - tree.height + 20, 
-                            w: 60, h: 90, // Slightly adjusted ratio
+                            // FIXED: Spawns lower (inside leaves)
+                            y: tree.y - tree.height + 40, 
+                            w: 60, h: 90, 
                             vy: 0, active: true, flashTimer: 0
                         });
                     }
@@ -228,7 +230,7 @@
                 iguana.y += iguana.vy;
                 iguana.flashTimer++;
 
-                // Catch (Adjusted hitbox for better feel)
+                // Catch
                 if (
                     iguana.x < player.x + player.w - 40 &&
                     iguana.x + iguana.w > player.x + 40 &&
@@ -258,7 +260,7 @@
             ctx.save();
             ctx.translate(x + shake, y);
             
-            // Trunk (Drawn upwards from 0,0)
+            // Trunk
             ctx.beginPath();
             ctx.moveTo(-15, 0); 
             ctx.quadraticCurveTo(10, -height / 2, -5, -height); 
@@ -292,7 +294,6 @@
                     ctx.fillStyle = 'red'; ctx.font = 'bold 40px Arial';
                     ctx.fillText('!', tree.x - 10, tree.y - tree.height - 50);
                 }
-                // FIXED: We pass tree.y directly now
                 drawPalmTree(ctx, tree.x, tree.y, tree.height, shake);
             });
 
@@ -301,11 +302,11 @@
                 if (!iguana.active) return;
                 let col = (Math.floor(iguana.flashTimer / 5) % 2); 
                 
-                // FIXED: Added PAD_X/Y to trim edges and prevent "feet bleed"
+                // FIXED: Use the new PAD_TOP and PAD_BOTTOM
                 ctx.drawImage(sprites, 
-                    (col * cellW) + PAD_X, (2 * cellH) + PAD_Y, // Source X, Y (Trimmed)
-                    cellW - (PAD_X*2), cellH - (PAD_Y*2),       // Source W, H (Trimmed)
-                    iguana.x, iguana.y, iguana.w, iguana.h      // Dest
+                    (col * cellW) + PAD_SIDE, (2 * cellH) + PAD_TOP, 
+                    cellW - (PAD_SIDE*2), cellH - (PAD_TOP + PAD_BOTTOM),      
+                    iguana.x, iguana.y, iguana.w, iguana.h      
                 );
             });
 
@@ -325,10 +326,10 @@
                 ctx.translate(-(player.x + player.w/2), -(player.y + player.h/2));
             }
             
-            // FIXED: Added PAD_X/Y here too for the player
+            // FIXED: Apply same aggressive padding to player
             ctx.drawImage(sprites, 
-                (col * cellW) + PAD_X, (row * cellH) + PAD_Y, 
-                cellW - (PAD_X*2), cellH - (PAD_Y*2), 
+                (col * cellW) + PAD_SIDE, (row * cellH) + PAD_TOP, 
+                cellW - (PAD_SIDE*2), cellH - (PAD_TOP + PAD_BOTTOM), 
                 player.x, player.y, player.w, player.h
             );
             ctx.restore();
