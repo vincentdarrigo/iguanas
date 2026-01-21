@@ -99,12 +99,16 @@
         let canvasW, canvasH;
         let musicEnabled = true;
 
-        // --- SPRITE SLICING CONFIG ---
-        // We use specific padding to cut out "ghost feet" from the row above
+        // --- SPRITE MAPPING (THE FIX) ---
+        // Instead of blind math, we define a GAP to skip "seams"
+        // TOP_GAP: Skips the top pixels of a cell (removes ghost feet)
+        // BTM_GAP: Skips the bottom pixels (removes empty space)
         let cellW, cellH;
-        const PAD_TOP = 60;   // Aggressive crop from top (Removes overhead feet)
-        const PAD_BOTTOM = 5; // Gentle crop from bottom (Keeps your feet)
-        const PAD_SIDE = 20;  // Trims side empty space
+        
+        // TWEAK THESE IF YOU STILL SEE GHOSTS
+        const TOP_GAP = 50;  // High number cuts off top (ghost feet from above)
+        const BTM_GAP = 10;  // Low number keeps your own feet
+        const SIDE_GAP = 15; // Trims sides
 
         sprites.onload = () => {
             cellW = sprites.naturalWidth / 2;
@@ -145,11 +149,10 @@
                 trees.push({
                     x: spacing * i,
                     y: canvasH - 75, 
-                    height: 300 + Math.random() * 100,
+                    height: 300 + Math.random() * 150, // Taller trees
                     shakeTimer: 0
                 });
             }
-            // FIXED: Lifted player up significantly so feet are ON sand
             player.x = canvasW / 2;
             player.y = canvasH - 240; 
         }
@@ -211,8 +214,9 @@
                     if (tree.shakeTimer === 0) {
                         iguanas.push({
                             x: tree.x + (Math.random()*40 - 20),
-                            // FIXED: Spawns lower (inside leaves)
-                            y: tree.y - tree.height + 40, 
+                            // FIXED: Spawns closer to the top leaves
+                            // The '10' pushes it just slightly below the very top
+                            y: tree.y - tree.height + 10, 
                             w: 60, h: 90, 
                             vy: 0, active: true, flashTimer: 0
                         });
@@ -302,10 +306,10 @@
                 if (!iguana.active) return;
                 let col = (Math.floor(iguana.flashTimer / 5) % 2); 
                 
-                // FIXED: Use the new PAD_TOP and PAD_BOTTOM
+                // IGUANA DRAW
                 ctx.drawImage(sprites, 
-                    (col * cellW) + PAD_SIDE, (2 * cellH) + PAD_TOP, 
-                    cellW - (PAD_SIDE*2), cellH - (PAD_TOP + PAD_BOTTOM),      
+                    (col * cellW) + SIDE_GAP, (2 * cellH) + TOP_GAP, // Start 50px lower to skip ghost feet
+                    cellW - (SIDE_GAP*2), cellH - (TOP_GAP + BTM_GAP),      
                     iguana.x, iguana.y, iguana.w, iguana.h      
                 );
             });
@@ -319,17 +323,17 @@
                 row = frame.r; col = frame.c;
             }
             
-            // Flip
             if (!player.facingRight) {
                 ctx.translate(player.x + player.w/2, player.y + player.h/2);
                 ctx.scale(-1, 1);
                 ctx.translate(-(player.x + player.w/2), -(player.y + player.h/2));
             }
             
-            // FIXED: Apply same aggressive padding to player
+            // PLAYER DRAW
+            // We use the same gaps here to ensure player doesn't have ghost feet above basket
             ctx.drawImage(sprites, 
-                (col * cellW) + PAD_SIDE, (row * cellH) + PAD_TOP, 
-                cellW - (PAD_SIDE*2), cellH - (PAD_TOP + PAD_BOTTOM), 
+                (col * cellW) + SIDE_GAP, (row * cellH) + TOP_GAP, 
+                cellW - (SIDE_GAP*2), cellH - (TOP_GAP + BTM_GAP), 
                 player.x, player.y, player.w, player.h
             );
             ctx.restore();
