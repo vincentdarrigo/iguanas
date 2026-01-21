@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Iguana Catch: Miami Edition</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Bangers&display=swap');
+
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%); /* Miami Sky */
+            font-family: 'Bangers', cursive;
+            touch-action: none; /* Prevents scrolling on mobile */
+        }
+        
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(0, 0, 0, 0.6);
+            color: #FFD700; 
+            text-shadow: 3px 3px 0px #000;
+            z-index: 10;
+        }
+
+        h1 { font-size: 80px; margin: 0; letter-spacing: 2px; }
+        h2 { font-size: 40px; color: white; margin-top: 5px; }
+        
+        .control-group { 
+            margin: 20px; 
+            background: rgba(255,255,255,0.2); 
+            padding: 15px; 
+            border-radius: 15px; 
+            border: 2px solid white;
+        }
+        
+        button {
+            padding: 15px 40px;
+            font-size: 30px;
+            font-family: 'Bangers', cursive;
+            background: #FF4500;
+            color: white;
+            border: 4px solid white;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 0 #8B0000;
+        }
+        button:active { transform: translateY(5px); box-shadow: 0 0 0 #8B0000; }
+
+        canvas { image-rendering: pixelated; display: block; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h1>IGUANA CATCH</h1>
+        <h2>MIAMI FREEZE ALERT</h2>
+        
+        <div class="control-group">
+            <label style="font-size: 24px; color: white;">Drop Speed: <span id="speedVal">5</span></label><br>
+            <input type="range" id="speedInput" min="1" max="10" value="5" oninput="document.getElementById('speedVal').innerText = this.value">
+        </div>
+        <div class="control-group">
+            <label style="font-size: 24px; color: white;">Music: </label>
+            <input type="checkbox" id="musicToggle" checked>
+        </div>
+        
+        <button onclick="startGame()">PLAY NOW</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const uiLayer = document.getElementById('ui-layer');
+
+        // --- AUDIO SETUP ---
+        const audio = {
+            music: new Audio('music.wav'),
+            splat: new Audio('splat.wav'),
+            cheer: new Audio('cheer.wav')
+        };
+        audio.music.loop = true;
+        audio.music.volume = 0.4; // Lower background music volume
+
+        // --- ASSETS ---
+        const sprites = new Image();
+        sprites.src = 'spritesheet.png'; 
+
+        // --- GAME STATE ---
+        let gameRunning = false;
+        let score = 0;
+        let strikes = 0;
+        const maxStrikes = 5;
+        let baseSpeed = 5;
+        let frameCount = 0;
+        let canvasW, canvasH;
+        let musicEnabled = true;
+
+        // Auto-Detect Sprite Grid Size (2 Columns, 3 Rows)
+        let cellW, cellH;
+        sprites.onload = () => {
+            cellW = sprites.naturalWidth / 2;
+            cellH = sprites.naturalHeight / 3;
+            resize();
+        };
+
+        function resize() {
+            canvasW = window.innerWidth;
+            canvasH = window.innerHeight;
+            canvas.width = canvasW;
+            canvas.height = canvasH;
+            ctx.imageSmoothingEnabled = false;
+            if(gameRunning) initTrees();
+            else draw(); // Draw one frame if waiting
+        }
+        window.addEventListener('resize', resize);
+
+        // --- OBJECTS ---
+        let trees = [];
+        let iguanas = [];
+        let player = {
+            x: 0, y: 0, w: 120, h: 160, 
+            speed: 12, facingRight: true, 
+            animFrame: 0, state: 'idle' 
+        };
+
+        const keys = {};
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        // --- LOGIC ---
+        function initTrees() {
+            trees = [];
+            const count = 5;
+            const spacing = canvasW / (count + 1);
+            for(let i=1; i<=count; i++) {
+                trees.push({
+                    x: spacing * i,
+                    y: canvasH - 180, 
+                    height: 300 + Math.random() * 100,
+                    shakeTimer: 0
+                });
+            }
+            player.x = canvasW / 2;
+            player.y = canvasH - 190; // Feet on sand
+        }
+
+        function startGame() {
+            baseSpeed = parseInt(document.getElementById('speedInput').value) + 3;
+            musicEnabled = document.getElementById('musicToggle').checked;
+            
+            if(musicEnabled) {
+                audio.music.currentTime = 0;
+                audio.music.play().catch(e => console.log("Audio play failed:", e));
+            }
+
+            score = 0;
+            strikes = 0;
+            iguanas = [];
+            initTrees();
+            
+            gameRunning = true;
+            uiLayer.classList.add('hidden');
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            audio.music.pause();
+            uiLayer.innerHTML = `
+                <h1>GAME OVER</h1>
+                <h2>Caught: ${score}</h2>
+                <button onclick="location.reload()">TRY AGAIN</button>
+            `;
+            uiLayer.classList.remove('hidden');
+        }
+
+        function update() {
+            frameCount++;
+
+            // Player Move
+            player.state = 'idle';
+            if (keys['ArrowLeft'] || keys['KeyA']) {
+                player.x -= player.speed;
+                player.facingRight = false;
+                player.state = 'walk';
+            }
+            if (keys['ArrowRight'] || keys['KeyD']) {
+                player.x += player.speed;
+                player.facingRight = true;
+                player.state = 'walk';
+            }
+            if (player.x < 0) player.x = 0;
+            if (player.x > canvasW - player.w) player.x = canvasW - player.w;
+            
+            // Anim Timer
+            if (player.state === 'walk' && frameCount % 6 === 0) player.animFrame++;
+
+            // Trees
+            trees.forEach(tree => {
+                if (tree.shakeTimer > 0) {
+                    tree.shakeTimer--;
+                    if (tree.shakeTimer === 0) {
+                        iguanas.push({
+                            x: tree.x + (Math.random()*40 - 20),
+                            y: tree.y - tree.height + 40,
+                            w: 50, h: 80,
+                            vy: 0, active: true, flashTimer: 0
+                        });
+                    }
+                } else if (Math.random() < 0.005) {
+                    tree.shakeTimer = 80;
+                }
+            });
+
+            // Iguanas
+            iguanas.forEach(iguana => {
+                if (!iguana.active) return;
+                iguana.vy += 0.2; 
+                if(iguana.vy > baseSpeed) iguana.vy = baseSpeed;
+                iguana.y += iguana.vy;
+                iguana.flashTimer++;
+
+                // Catch
+                if (
+                    iguana.x < player.x + player.w - 30 &&
+                    iguana.x + iguana.w > player.x + 30 &&
+                    iguana.y + iguana.h > player.y + 20 && 
+                    iguana.y < player.y + 60
+                ) {
+                    score++;
+                    iguana.active = false;
+                    if(musicEnabled) {
+                        audio.cheer.currentTime = 0;
+                        audio.cheer.play();
+                    }
+                }
+                // Miss
+                else if (iguana.y > canvasH) {
+                    iguana.active = false;
+                    strikes++;
+                    if(musicEnabled) {
+                        audio.splat.currentTime = 0;
+                        audio.splat.play();
+                    }
+                    if (strikes >= maxStrikes) gameOver();
+                }
+            });
+        }
+
+        function drawPalmTree(ctx, x, y, height, shake) {
+            ctx.save();
+            ctx.translate(x + shake, y);
+            // Trunk
+            ctx.beginPath();
+            ctx.moveTo(-15, 0); 
+            ctx.quadraticCurveTo(10, -height / 2, -5, -height); 
+            ctx.lineTo(5, -height); 
+            ctx.quadraticCurveTo(20, -height / 2, 15, 0);
+            ctx.fillStyle = '#8B4513'; ctx.fill();
+            // Leaves
+            ctx.translate(0, -height);
+            ctx.fillStyle = '#228B22';
+            for(let i=0; i<5; i++) {
+                ctx.save();
+                ctx.rotate((i * 45 - 90) * Math.PI / 180);
+                ctx.beginPath(); ctx.ellipse(0, -40, 15, 50, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvasW, canvasH);
+            
+            // Sand
+            ctx.fillStyle = '#F4A460'; ctx.fillRect(0, canvasH - 80, canvasW, 80);
+            ctx.fillStyle = '#32CD32'; ctx.fillRect(0, canvasH - 90, canvasW, 10);
+
+            // Trees
+            trees.forEach(tree => {
+                let shake = tree.shakeTimer > 0 ? Math.sin(frameCount * 0.5) * 5 : 0;
+                if(tree.shakeTimer > 0 && frameCount % 10 < 5) {
+                    ctx.fillStyle = 'red'; ctx.font = 'bold 40px Arial';
+                    ctx.fillText('!', tree.x - 10, tree.y - tree.height - 50);
+                }
+                drawPalmTree(ctx, tree.x, tree.y - 80, tree.height, shake);
+            });
+
+            // Iguanas
+            iguanas.forEach(iguana => {
+                if (!iguana.active) return;
+                let col = (Math.floor(iguana.flashTimer / 5) % 2); 
+                // Iguanas are on Row 2 (index 2) of your sheet
+                ctx.drawImage(sprites, col * cellW, 2 * cellH, cellW, cellH, iguana.x, iguana.y, iguana.w, iguana.h);
+            });
+
+            // Player
+            ctx.save();
+            let row = 0, col = 0;
+            if (player.state !== 'idle') {
+                const cycle = [{r:0, c:1}, {r:1, c:0}, {r:1, c:1}];
+                let frame = cycle[player.animFrame % 3];
+                row = frame.r; col = frame.c;
+            }
+            if (!player.facingRight) {
+                ctx.translate(player.x + player.w/2, player.y + player.h/2);
+                ctx.scale(-1, 1);
+                ctx.translate(-(player.x + player.w/2), -(player.y + player.h/2));
+            }
+            ctx.drawImage(sprites, col * cellW, row * cellH, cellW, cellH, player.x, player.y, player.w, player.h);
+            ctx.restore();
+
+            // HUD
+            ctx.fillStyle = 'white'; ctx.font = '30px Bangers'; ctx.shadowColor = 'black'; ctx.shadowBlur = 4;
+            ctx.fillText(`FROZEN IGUANAS: ${score}`, 20, 40);
+            ctx.fillText(`STRIKES: ${strikes}/${maxStrikes}`, 20, 80);
+            ctx.shadowBlur = 0;
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
